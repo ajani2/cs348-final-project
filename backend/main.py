@@ -3,9 +3,20 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import text, func
 from datetime import datetime
+import os
+import shutil
+
+SRC_DB_PATH = os.path.join(os.path.dirname(__file__), "health.db")
+TMP_DB_PATH = "/tmp/health.db"
+
+if not os.path.exists(TMP_DB_PATH):
+    if os.path.exists(SRC_DB_PATH):
+        shutil.copyfile(SRC_DB_PATH, TMP_DB_PATH)
+    else:
+        open(TMP_DB_PATH, 'a').close()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///health.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/health.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
