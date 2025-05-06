@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+
+# Node/React
+node_modules/
+build/
+.env
+
+# Mac
+.DS_Store
+
+# Firebase
+.firebase/
