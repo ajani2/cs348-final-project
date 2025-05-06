@@ -41,6 +41,7 @@ function App() {
 function MainPortal() {
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [allDoctors, setAllDoctors] = useState([]); // <-- NEW
   const [doctorReport, setDoctorReport] = useState([]);
   const [doctorPatients, setDoctorPatients] = useState([]);
   const [selectedDoctorForPatients, setSelectedDoctorForPatients] =
@@ -68,6 +69,16 @@ function MainPortal() {
   const [editingDoctor, setEditingDoctor] = useState(null);
   const [doctorError, setDoctorError] = useState("");
 
+  // Fetch all doctors (unfiltered) for patient display
+  const fetchAllDoctors = async () => {
+    try {
+      const response = await axiosInstance.get("/doctors");
+      setAllDoctors(response.data);
+    } catch (error) {
+      setAllDoctors([]);
+    }
+  };
+
   // Fetch all specialties from all doctors (not just filtered ones)
   const fetchAllSpecialties = async () => {
     try {
@@ -83,6 +94,7 @@ function MainPortal() {
     fetchPatients();
     fetchDoctors();
     fetchDoctorReport();
+    fetchAllDoctors();
     fetchAllSpecialties();
     // eslint-disable-next-line
   }, []);
@@ -219,6 +231,7 @@ function MainPortal() {
       setDoctorError("");
       await axiosInstance.post(`/doctors`, doctorFormData);
       fetchDoctors(specialtyFilter);
+      fetchAllDoctors();
       fetchDoctorReport();
       fetchAllSpecialties();
       setDoctorFormData({ name: "", specialty: "" });
@@ -239,6 +252,7 @@ function MainPortal() {
       setDoctorError("");
       await axiosInstance.put(`/doctors/${editingDoctor.id}`, doctorFormData);
       fetchDoctors(specialtyFilter);
+      fetchAllDoctors();
       fetchDoctorReport();
       fetchAllSpecialties();
       setEditingDoctor(null);
@@ -256,6 +270,7 @@ function MainPortal() {
       setDoctorError("");
       await axiosInstance.delete(`/doctors/${id}`);
       fetchDoctors(specialtyFilter);
+      fetchAllDoctors();
       fetchDoctorReport();
       fetchAllSpecialties();
     } catch (error) {
@@ -358,7 +373,7 @@ function MainPortal() {
             onChange={handleFormChange}
           >
             <option value="">Select Doctor</option>
-            {doctors.map((doctor) => (
+            {allDoctors.map((doctor) => (
               <option key={doctor.id} value={doctor.id}>
                 {doctor.name} ({doctor.specialty})
               </option>
@@ -385,7 +400,7 @@ function MainPortal() {
                 {patient.condition}
                 <br />
                 Doctor:{" "}
-                {doctors.find((d) => d.id === patient.doctor_id)?.name ||
+                {allDoctors.find((d) => d.id === patient.doctor_id)?.name ||
                   "None"}
                 <div className="patient-actions">
                   <button onClick={() => handleEditPatient(patient)}>
@@ -493,7 +508,7 @@ function MainPortal() {
           <div className="doctor-patients">
             <h3>
               Patients of{" "}
-              {doctors.find((d) => d.id === selectedDoctorForPatients)?.name}
+              {allDoctors.find((d) => d.id === selectedDoctorForPatients)?.name}
             </h3>
             <ul>
               {doctorPatients.map((p) => (
@@ -547,31 +562,28 @@ function AppointmentPortal() {
     const res = await axiosInstance.get("/appointments");
     setAppointments(res.data);
   };
+
   const fetchPatients = async () => {
     const res = await axiosInstance.get("/patients");
     setPatients(res.data);
   };
+
   const fetchDoctors = async () => {
     const res = await axiosInstance.get("/doctors");
     setDoctors(res.data);
   };
-  const fetchDurations = async () => {
-    const res = await axiosInstance.get("/appointments/durations");
-    setDurations(res.data);
-  };
 
-  // Autofill doctor when patient is selected
-  useEffect(() => {
-    if (formData.patient_id && !editingAppointment) {
-      const patient = patients.find(
-        (p) => p.id === Number(formData.patient_id)
-      );
-      if (patient) {
-        setFormData((f) => ({ ...f, doctor_id: patient.doctor_id }));
-      }
+  const fetchDurations = async () => {
+    try {
+      const res = await axiosInstance.get("/appointments");
+      const uniqueDurations = [
+        ...new Set(res.data.map((a) => a.duration).filter(Boolean)),
+      ];
+      setDurations(uniqueDurations);
+    } catch {
+      setDurations([]);
     }
-    // eslint-disable-next-line
-  }, [formData.patient_id, patients]);
+  };
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -579,45 +591,56 @@ function AppointmentPortal() {
   };
 
   const handleAddAppointment = async () => {
-    await axiosInstance.post("/appointments", formData);
-    fetchAppointments();
-    setFormData({
-      patient_id: "",
-      doctor_id: "",
-      date: "",
-      time: "",
-      duration: "",
-      notes: "",
-    });
+    try {
+      await axiosInstance.post(`/appointments`, formData);
+      fetchAppointments();
+      setFormData({
+        patient_id: "",
+        doctor_id: "",
+        date: "",
+        time: "",
+        duration: "",
+        notes: "",
+      });
+    } catch (error) {
+      alert("Error adding appointment");
+    }
   };
 
-  const handleEditAppointment = (appt) => {
-    setEditingAppointment(appt);
+  const handleEditAppointment = (appointment) => {
+    setEditingAppointment(appointment);
     setFormData({
-      patient_id: appt.patient_id,
-      doctor_id: appt.doctor_id,
-      date: appt.date,
-      time: appt.time,
-      duration: appt.duration,
-      notes: appt.notes,
+      patient_id: appointment.patient_id,
+      doctor_id: appointment.doctor_id,
+      date: appointment.date,
+      time: appointment.time,
+      duration: appointment.duration,
+      notes: appointment.notes,
     });
   };
 
   const handleUpdateAppointment = async () => {
-    await axiosInstance.put(`/appointments/${editingAppointment.id}`, formData);
-    fetchAppointments();
-    setEditingAppointment(null);
-    setFormData({
-      patient_id: "",
-      doctor_id: "",
-      date: "",
-      time: "",
-      duration: "",
-      notes: "",
-    });
+    try {
+      await axiosInstance.put(
+        `/appointments/${editingAppointment.id}`,
+        formData
+      );
+      fetchAppointments();
+      setEditingAppointment(null);
+      setFormData({
+        patient_id: "",
+        doctor_id: "",
+        date: "",
+        time: "",
+        duration: "",
+        notes: "",
+      });
+    } catch (error) {
+      alert("Error updating appointment");
+    }
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelEditAppointment = () => {
     setEditingAppointment(null);
     setFormData({
       patient_id: "",
@@ -630,246 +653,209 @@ function AppointmentPortal() {
   };
 
   const handleDeleteAppointment = async (id) => {
-    await axiosInstance.delete(`/appointments/${id}`);
-    fetchAppointments();
+    try {
+      await axiosInstance.delete(`/appointments/${id}`);
+      fetchAppointments();
+    } catch (error) {
+      alert("Error deleting appointment");
+    }
   };
 
-  // Report
   const handleReportFilterChange = (e) => {
     const { name, value } = e.target;
     setReportFilters((f) => ({ ...f, [name]: value }));
   };
 
-  const handleGenerateReport = async () => {
-    const params = {};
-    Object.entries(reportFilters).forEach(([k, v]) => {
-      if (v) params[k] = v;
-    });
-    const res = await axiosInstance.get("/appointments/report", { params });
-    // If backend returns {appointments: [...], stats: {...}}
-    if (res.data.appointments && res.data.stats) {
-      setReportResults(res.data.appointments);
-      setStats(res.data.stats);
-    } else {
+  const handleRunReport = async () => {
+    try {
+      const res = await axiosInstance.get("/appointments/report", {
+        params: reportFilters,
+      });
       setReportResults(res.data);
+
+      // Calculate stats
+      if (res.data.length > 0) {
+        const total = res.data.length;
+        const avgDuration =
+          res.data.reduce((sum, a) => sum + Number(a.duration || 0), 0) /
+          total;
+        setStats({ total, avgDuration: avgDuration.toFixed(2) });
+      } else {
+        setStats(null);
+      }
+    } catch {
+      setReportResults([]);
       setStats(null);
     }
-    setReportFilters({
-      patient_name: "",
-      doctor_name: "",
-      date_from: "",
-      date_to: "",
-      duration: "",
-    });
   };
-
-  // Time options (1hr intervals)
-  const timeOptions = [];
-  for (let h = 0; h < 24; ++h) {
-    timeOptions.push(`${h.toString().padStart(2, "0")}:00`);
-  }
 
   return (
     <div>
-      <h2>Appointment Portal</h2>
-      {/* Add/Edit Appointment */}
-      <div className="form-section">
-        <h3>{editingAppointment ? "Edit Appointment" : "Create Appointment"}</h3>
-        <div className="form-fields">
-          <select
-            name="patient_id"
-            value={formData.patient_id}
-            onChange={handleFormChange}
-          >
-            <option value="">Select Patient</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="doctor_id"
-            value={formData.doctor_id}
-            onChange={handleFormChange}
-          >
-            <option value="">Select Doctor</option>
-            {doctors.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name} ({d.specialty})
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            name="date"
-            value={formData.date}
-            onChange={handleFormChange}
-          />
-          <select
-            name="time"
-            value={formData.time}
-            onChange={handleFormChange}
-          >
-            <option value="">Select Time</option>
-            {timeOptions.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            name="duration"
-            placeholder="Duration (minutes)"
-            value={formData.duration}
-            onChange={handleFormChange}
-            min={1}
-          />
-          <input
-            type="text"
-            name="notes"
-            placeholder="Notes"
-            value={formData.notes}
-            onChange={handleFormChange}
-          />
-          {editingAppointment ? (
-            <>
-              <button onClick={handleUpdateAppointment}>Update</button>
-              <button onClick={handleCancelEdit}>Cancel</button>
-            </>
-          ) : (
-            <button onClick={handleAddAppointment}>Add Appointment</button>
-          )}
-        </div>
-      </div>
-      {/* Appointment List */}
-      <div className="appointments-list">
-        <h3>Appointments</h3>
-        {appointments.length === 0 ? (
-          <p>No appointments found.</p>
-        ) : (
-          <ul>
-            {appointments.map((a) => (
-              <li key={a.id}>
-                <b>{a.patient_name}</b> with <b>{a.doctor_name}</b> on {a.date} at {a.time} for {a.duration} min.
-                <br />
-                Notes: {a.notes}
-                <div className="patient-actions">
+      <h2>Appointments</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Patient</th>
+            <th>Doctor</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Duration</th>
+            <th>Notes</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {appointments.map((a) => {
+            const patient = patients.find((p) => p.id === a.patient_id);
+            const doctor = doctors.find((d) => d.id === a.doctor_id);
+            return (
+              <tr key={a.id}>
+                <td>{patient ? patient.name : "Unknown"}</td>
+                <td>{doctor ? doctor.name : "Unknown"}</td>
+                <td>{a.date}</td>
+                <td>{a.time}</td>
+                <td>{a.duration}</td>
+                <td>{a.notes}</td>
+                <td>
                   <button onClick={() => handleEditAppointment(a)}>Edit</button>
-                  <button onClick={() => handleDeleteAppointment(a.id)}>Delete</button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  <button onClick={() => handleDeleteAppointment(a.id)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <h3>{editingAppointment ? "Edit Appointment" : "Add Appointment"}</h3>
+      <div>
+        <select
+          name="patient_id"
+          value={formData.patient_id}
+          onChange={handleFormChange}
+        >
+          <option value="">Select Patient</option>
+          {patients.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <select
+          name="doctor_id"
+          value={formData.doctor_id}
+          onChange={handleFormChange}
+        >
+          <option value="">Select Doctor</option>
+          {doctors.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+        <input
+          name="date"
+          placeholder="YYYY-MM-DD"
+          value={formData.date}
+          onChange={handleFormChange}
+        />
+        <input
+          name="time"
+          placeholder="HH:MM"
+          value={formData.time}
+          onChange={handleFormChange}
+        />
+        <input
+          name="duration"
+          placeholder="Duration (min)"
+          value={formData.duration}
+          onChange={handleFormChange}
+        />
+        <input
+          name="notes"
+          placeholder="Notes"
+          value={formData.notes}
+          onChange={handleFormChange}
+        />
+        {editingAppointment ? (
+          <>
+            <button onClick={handleUpdateAppointment}>Update</button>
+            <button onClick={handleCancelEditAppointment}>Cancel</button>
+          </>
+        ) : (
+          <button onClick={handleAddAppointment}>Add</button>
         )}
       </div>
-      {/* Report */}
-      <div className="report-section" style={{ marginTop: 32 }}>
-        <h3>Generate Appointment Report</h3>
-        <div className="search-fields">
-          <input
-            type="text"
-            placeholder="Patient Name"
-            name="patient_name"
-            value={reportFilters.patient_name}
-            onChange={handleReportFilterChange}
-          />
-          <input
-            type="text"
-            placeholder="Doctor Name"
-            name="doctor_name"
-            value={reportFilters.doctor_name}
-            onChange={handleReportFilterChange}
-          />
-          <input
-            type="date"
-            name="date_from"
-            value={reportFilters.date_from}
-            onChange={handleReportFilterChange}
-          />
-          <input
-            type="date"
-            name="date_to"
-            value={reportFilters.date_to}
-            onChange={handleReportFilterChange}
-          />
-          <select
-            name="duration"
-            value={reportFilters.duration}
-            onChange={handleReportFilterChange}
-          >
-            <option value="">All Durations</option>
-            {durations.map((d) => (
-              <option key={d} value={d}>
-                {d} minutes
-              </option>
-            ))}
-          </select>
-          <button onClick={handleGenerateReport}>Generate Report</button>
+      <h2>Appointment Report</h2>
+      <div>
+        <input
+          name="patient_name"
+          placeholder="Patient Name"
+          value={reportFilters.patient_name}
+          onChange={handleReportFilterChange}
+        />
+        <input
+          name="doctor_name"
+          placeholder="Doctor Name"
+          value={reportFilters.doctor_name}
+          onChange={handleReportFilterChange}
+        />
+        <input
+          name="date_from"
+          placeholder="Date From (YYYY-MM-DD)"
+          value={reportFilters.date_from}
+          onChange={handleReportFilterChange}
+        />
+        <input
+          name="date_to"
+          placeholder="Date To (YYYY-MM-DD)"
+          value={reportFilters.date_to}
+          onChange={handleReportFilterChange}
+        />
+        <select
+          name="duration"
+          value={reportFilters.duration}
+          onChange={handleReportFilterChange}
+        >
+          <option value="">All Durations</option>
+          {durations.map((d) => (
+            <option key={d} value={d}>
+              {d} min
+            </option>
+          ))}
+        </select>
+        <button onClick={handleRunReport}>Run Report</button>
+      </div>
+      {stats && (
+        <div>
+          <b>Total Appointments:</b> {stats.total} <br />
+          <b>Average Duration:</b> {stats.avgDuration} min
         </div>
-        {reportResults.length > 0 && (
-          <div className="report-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Patient</th>
-                  <th>Doctor</th>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Duration</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportResults.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.patient_name}</td>
-                    <td>{a.doctor_name}</td>
-                    <td>{a.date}</td>
-                    <td>{a.time}</td>
-                    <td>{a.duration}</td>
-                    <td>{a.notes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {reportResults.length === 0 && <div>No results found.</div>}
-        {/* Stats Section */}
-        {stats && (
-          <div className="stats-section">
-            <h4>Appointment Statistics</h4>
-            <div className="stats-grid">
-              <div>
-                <label>Average Duration:</label>
-                <span>{stats.average_duration} mins</span>
-              </div>
-              <div>
-                <label>Total Appointments:</label>
-                <span>{stats.total_appointments}</span>
-              </div>
-              <div>
-                <label>Avg Days Between Visits:</label>
-                <span>
-                  {stats.average_days_between_visits === null
-                    ? "N/A"
-                    : stats.average_days_between_visits}
-                </span>
-              </div>
-              <div>
-                <label>Unique Reasons:</label>
-                <span>
-                  {stats.unique_reasons && stats.unique_reasons.length > 0
-                    ? stats.unique_reasons.join(", ")
-                    : "None recorded"}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
+      <table>
+        <thead>
+          <tr>
+            <th>Patient</th>
+            <th>Doctor</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Duration</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {reportResults.map((a) => (
+            <tr key={a.id}>
+              <td>{a.patient_name}</td>
+              <td>{a.doctor_name}</td>
+              <td>{a.date}</td>
+              <td>{a.time}</td>
+              <td>{a.duration}</td>
+              <td>{a.notes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

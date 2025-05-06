@@ -2,13 +2,11 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy import text, func
-from datetime import datetime
 import os
 import shutil
 
 SRC_DB_PATH = os.path.join(os.path.dirname(__file__), "health.db")
 TMP_DB_PATH = "/tmp/health.db"
-
 if not os.path.exists(TMP_DB_PATH):
     if os.path.exists(SRC_DB_PATH):
         shutil.copyfile(SRC_DB_PATH, TMP_DB_PATH)
@@ -20,7 +18,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/health.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-CORS(app, origins=["*"], supports_credentials=True)
+CORS(app, origins=[
+    "http://localhost:3000",
+    "https://cs348finalproject-459000.web.app"
+], supports_credentials=True)
 
 class Patient(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -51,7 +52,6 @@ class Appointment(db.Model):
 with app.app_context():
     db.create_all()
 
-# ORM for CRUD
 @app.route('/patients', methods=['GET'])
 def get_patients():
     query = Patient.query
@@ -263,13 +263,6 @@ def delete_appointment(id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# Dynamic durations for dropdown (ORM)
-@app.route('/appointments/durations', methods=['GET'])
-def get_appointment_durations():
-    durations = db.session.query(Appointment.duration).distinct().all()
-    return jsonify(sorted({d[0] for d in durations}))
-
-# Prepared statement for report + stats
 @app.route('/appointments/report', methods=['GET'])
 def appointment_report():
     patient_name = request.args.get('patient_name', '')
@@ -320,36 +313,7 @@ def appointment_report():
         }
         for row in result
     ]
-
-    # --- Stats Section ---
-    durations_list = [a['duration'] for a in appointments]
-    notes_set = set(a['notes'] for a in appointments if a['notes'])
-    total_appointments = len(appointments)
-    avg_duration = round(sum(durations_list)/len(durations_list), 2) if durations_list else 0
-
-    # Average days between visits
-    if total_appointments > 1:
-        date_times = [
-            datetime.strptime(f"{a['date']} {a['time']}", "%Y-%m-%d %H:%M")
-            for a in appointments
-        ]
-        date_times.sort()
-        diffs = [(date_times[i+1] - date_times[i]).total_seconds() for i in range(len(date_times)-1)]
-        avg_days_between = round(sum(diffs)/len(diffs)/86400, 2)
-    else:
-        avg_days_between = None
-
-    stats = {
-        "average_duration": avg_duration,
-        "total_appointments": total_appointments,
-        "average_days_between_visits": avg_days_between,
-        "unique_reasons": list(notes_set),
-    }
-
-    return jsonify({
-        "appointments": appointments,
-        "stats": stats
-    })
+    return jsonify(appointments)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=4000)
