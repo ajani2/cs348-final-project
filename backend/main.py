@@ -4,6 +4,8 @@ from flask_cors import CORS
 from sqlalchemy import text, func
 import os
 import shutil
+import statistics
+from datetime import datetime
 
 SRC_DB_PATH = os.path.join(os.path.dirname(__file__), "health.db")
 TMP_DB_PATH = "/tmp/health.db"
@@ -313,7 +315,37 @@ def appointment_report():
         }
         for row in result
     ]
-    return jsonify(appointments)
+
+    # --- Stats Calculation ---
+    durations = [a['duration'] for a in appointments if a['duration'] is not None]
+    total_appointments = len(appointments)
+    average_duration = round(statistics.mean(durations), 2) if durations else None
+
+    # Average days between visits (for all patients, sorted by date)
+    dates = sorted([a['date'] for a in appointments if a['date']])
+    average_days_between_visits = None
+    if len(dates) > 1:
+        date_objs = [datetime.strptime(d, "%Y-%m-%d") for d in dates]
+        deltas = [
+            (date_objs[i] - date_objs[i - 1]).days
+            for i in range(1, len(date_objs))
+        ]
+        average_days_between_visits = round(statistics.mean(deltas), 2) if deltas else None
+
+    # Unique reasons (from notes)
+    unique_reasons = list({a['notes'] for a in appointments if a['notes']})
+
+    stats = {
+        "average_duration": average_duration,
+        "total_appointments": total_appointments,
+        "average_days_between_visits": average_days_between_visits,
+        "unique_reasons": unique_reasons,
+    }
+
+    return jsonify({
+        "appointments": appointments,
+        "stats": stats
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=4000)
